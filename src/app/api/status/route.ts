@@ -1,15 +1,77 @@
-// route.ts — safety and service availability. Dependencies: database.
-import { db } from '../../../lib/db';
+// route.ts — terminal status, safety state, source registry, market hours, and pending action summary. Dependencies: db, bootstrap, market, metaapi, mt5, actionCenter.
+import { desc, eq } from 'drizzle-orm';
+import { getDatabaseHealth, getDb } from '../../../lib/db';
+import { expireStaleActions } from '../../../lib/actionCenter';
+import { getMarketSessions } from '../../../lib/market';
+import { getMetaApiConnection } from '../../../lib/metaapi';
 import { getSnapshot } from '../../../lib/mt5';
-import { safetyState } from '../../../lib/schema';
+import { pendingActions, safetyState, sentimentEvents, sources } from '../../../lib/schema';
+
 export const dynamic = 'force-dynamic';
+
 export async function GET() {
-  const mt5 = process.env.MT5_BRIDGE_TOKEN && Buffer.byteLength(process.env.MT5_BRIDGE_TOKEN) >= 32 ? getSnapshot().status : 'NOT CONFIGURED';
-  if (db === null) return Response.json({ mt5, database: 'NOT CONFIGURED', killed: null, reason: 'DATABASE_URL is not configured.' });
+  const health = await getDatabaseHealth();
+  const db = await getDb();
+  const mt5 =
+    process.env.MT5_BRIDGE_TOKEN && Buffer.byteLength(process.env.MT5_BRIDGE_TOKEN) >= 32
+      ? getSnapshot().status
+      : 'NOT CONFIGURED';
+
+  if (!db) {
+    return Response.json({
+      mt5,
+      database: health.database,
+      storageEngine: health.storageEngine,
+      reason: health.reason,
+      killed: null,
+      killReason: null,
+      pendingActions: 0,
+      sources: [],
+      marketSessions: getMarketSessions(),
+      metaapiStatus: 'NOT_CONFIGURED',
+      newsShockAlert: false,
+    });
+  }
+
   try {
-    const state = await db.select().from(safetyState).limit(1);
-    return Response.json({ mt5, database: 'LIVE', killed: state[0]?.killed ?? false, reason: null });
+    await expireStaleActions(db);
+    const [safetyRows, sourceRows, pendingRows, newsRows, metaCfg] = await Promise.all([
+      db.select().from(safetyState).where(eq(safetyState.id, 1)).limit(1),
+      db.select().from(sources),
+      db.select({ id: pendingActions.id }).from(pendingActions).where(eq(pendingActions.status, 'pending')),
+      db.select({ shock: sentimentEvents.shockTriggered }).from(sentimentEvents).orderBy(desc(sentimentEvents.createdAt)).limit(25),
+      getMetaApiConnection(db),
+    ]);
+
+    return Response.json(
+      {
+        mt5,
+        database: health.database,
+        storageEngine: health.storageEngine,
+        reason: health.reason,
+        killed: safetyRows[0]?.killed ?? false,
+        killReason: safetyRows[0]?.reason ?? null,
+        pendingActions: pendingRows.length,
+        sources: sourceRows,
+        marketSessions: getMarketSessions(),
+        metaapiStatus: metaCfg.status,
+        newsShockAlert: newsRows.some((n) => n.shock),
+      },
+      { headers: { 'Cache-Control': 'no-store' } },
+    );
   } catch {
-    return Response.json({ mt5, database: 'OFFLINE', killed: null, reason: 'Database unavailable or migrations not applied.' });
+    return Response.json({
+      mt5,
+      database: 'OFFLINE',
+      storageEngine: health.storageEngine,
+      reason: 'Database query failed.',
+      killed: null,
+      killReason: null,
+      pendingActions: 0,
+      sources: [],
+      marketSessions: getMarketSessions(),
+      metaapiStatus: 'OFFLINE',
+      newsShockAlert: false,
+    });
   }
 }
