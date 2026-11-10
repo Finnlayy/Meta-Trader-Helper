@@ -1,0 +1,21 @@
+CREATE TABLE "ea_library" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"slug" text NOT NULL,
+	"source_kind" text DEFAULT 'uploaded' NOT NULL,
+	"category" text DEFAULT 'Custom EA' NOT NULL,
+	"entry_file_name" text NOT NULL,
+	"version" text DEFAULT '1.00' NOT NULL,
+	"author" text DEFAULT 'User' NOT NULL,
+	"description" text DEFAULT '' NOT NULL,
+	"language" text DEFAULT 'mql5' NOT NULL,
+	"file_count" integer DEFAULT 1 NOT NULL,
+	"files_json" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"inputs_json" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"includes_json" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"last_audit_score" double precision,
+	"last_audit_grade" text,
+	"last_audit_json" jsonb,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);

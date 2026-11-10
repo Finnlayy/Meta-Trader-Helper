@@ -1,28 +1,284 @@
-// page.tsx — operator console with explicit service states. Dependencies: React.
+// page.tsx — Fable 5 Multi-Workspace Intelligence Terminal (F1-F8 tabs, Ctrl+K command palette, Shift+K cascading kill switch). Dependencies: React, Next.js.
 'use client';
-import { useCallback, useEffect, useState } from 'react';
 
-type Status = { database: string; killed: boolean | null; reason: string | null };
-type Market = { status: string; symbol: string; venue?: string; last?: number; bid?: number | null; ask?: number | null; volume?: number | null; timestamp?: number | null; lastSuccess: string | null; latencyMs?: number; errors: string[] };
-const number = (value: number | null | undefined) => typeof value === 'number' ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value) : '—';
-const time = (value: string | number | null | undefined) => value != null ? new Date(value).toLocaleString() : 'Never';
-export default function Home() {
-  const [status, setStatus] = useState<Status | null>(null);
-  const [market, setMarket] = useState<Market | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [notice, setNotice] = useState('');
-  const refreshStatus = useCallback(async () => { try { const response = await fetch('/api/status'); setStatus(await response.json() as Status); } catch { setStatus({ database: 'OFFLINE', killed: null, reason: 'Status endpoint unreachable.' }); } }, []);
-  const refreshMarket = useCallback(async () => { setLoading(true); try { const response = await fetch('/api/market?symbol=BTC%2FUSD'); setMarket(await response.json() as Market); } catch { setMarket({ status: 'OFFLINE', symbol: 'BTC/USD', lastSuccess: null, errors: ['Market endpoint unreachable.'] }); } finally { setLoading(false); } }, []);
-  useEffect(() => { void refreshStatus(); void refreshMarket(); }, [refreshStatus, refreshMarket]);
-  const kill = useCallback(async () => { if (!window.confirm('Record a kill request? Execution is not implemented in this build.')) return; try { const response = await fetch('/api/kill', { method: 'POST' }); const data = await response.json() as { error?: string }; setNotice(response.ok ? 'Kill request recorded and audited.' : data.error ?? 'Request failed.'); await refreshStatus(); } catch { setNotice('Kill request failed: endpoint unreachable.'); } }, [refreshStatus]);
-  useEffect(() => { const handler = (event: KeyboardEvent) => { if (event.shiftKey && event.key.toLowerCase() === 'k') { event.preventDefault(); void kill(); } }; window.addEventListener('keydown', handler); return () => window.removeEventListener('keydown', handler); }, [kill]);
-  return <div className="shell"><aside className="sidebar"><div className="brand"><span className="mark">F<span>5</span></span><div><strong>FABLE 5</strong><small>INTELLIGENCE TERMINAL</small></div></div><div className="side-label">WORKSPACE</div><div className="nav-active"><span>◈</span> Master console <i>01</i></div><div className="side-bottom"><div className="side-label">SYSTEM NOTICE</div><p>Execution is not available in this build. Do not use this terminal to manage live capital.</p><div className="version">FOUNDATION / 0.1.0</div></div></aside>
-  <main><header><div className="breadcrumb">WORKSPACE <span>/</span> MASTER CONSOLE</div><div className="header-actions"><span className="mode"><b>●</b> EXECUTION UNAVAILABLE</span><button className="kill" onClick={() => void kill()}>■ &nbsp; KILL SWITCH <span>SHIFT K</span></button></div></header>
-  <div className="content"><div className="intro"><div><div className="eyebrow"><span className="dot"/> OPERATOR WORKSPACE / 01</div><h1>Master console<span>.</span></h1><p>Verified state first. Intelligence and execution will only appear when implemented.</p></div><div className="intro-right"><div>TERMINAL STATUS</div><strong>FOUNDATION BUILD</strong><small>Execution not enabled</small></div></div>
-  <div className="warning"><span>!</span><div><strong>NOT READY FOR TRADING</strong><p>Risk gates, order execution and bridge are not implemented. The kill request is persisted only when PostgreSQL is configured; it cannot control an external terminal.</p></div></div>
-  <div className="section-title"><div><span>01 / OVERVIEW</span><h2>Operational state</h2></div><span className="muted">LIVE SERVICE STATUS</span></div>
-  <div className="cards"><article className="card"><div className="card-top">SAFETY STATE <span>◈</span></div><div className="big">{status === null ? 'CHECKING' : status.killed === null ? 'UNKNOWN' : status.killed ? 'KILL RECORDED' : 'NO KILL REQUEST'}</div><p>{status?.reason ?? 'Persistent state in PostgreSQL.'}</p><div className="card-foot"><span>DATABASE</span><b className={status?.database === 'LIVE' ? 'good' : 'amber'}>{status?.database ?? 'CHECKING'}</b></div></article><article className="card"><div className="card-top">EXECUTION MODE <span>↗</span></div><div className="big">UNAVAILABLE</div><p>No order engine or MT5 connection is present.</p><div className="card-foot"><span>ORDER ROUTING</span><b>NOT IMPLEMENTED</b></div></article><article className="card"><div className="card-top">INTELLIGENCE <span>✳</span></div><div className="big">NOT AVAILABLE</div><p>Agent analysis and sentiment inference are not configured.</p><div className="card-foot"><span>FINBERT</span><b className="amber">NOT CONFIGURED</b></div></article></div>
-  <div className="section-title market-title"><div><span>02 / MARKET DATA</span><h2>Market pulse</h2></div><button className="refresh" onClick={() => void refreshMarket()} disabled={loading}>{loading ? 'CHECKING SOURCES…' : '↻  RETRY SOURCES'}</button></div>
-  <div className="market-grid"><article className="panel"><div className="panel-head"><div><div className="eyebrow">READ-ONLY MARKET DATA</div><h3>BTC <span>/ USD</span></h3></div><div className={'status ' + (market?.status === 'LIVE' ? 'live' : '')}>● {market?.status ?? 'CHECKING'}</div></div><div className="price">{number(market?.last)} <span>USD</span></div><div className="data-row"><div><small>BID</small><strong>{number(market?.bid)}</strong></div><div><small>ASK</small><strong>{number(market?.ask)}</strong></div><div><small>24H QUOTE VOLUME</small><strong>{number(market?.volume)}</strong></div></div><div className="panel-foot"><span>VENUE <b>{market?.venue?.toUpperCase() ?? '—'}</b></span><span>LAST SUCCESS <b>{time(market?.lastSuccess)}</b></span><span>LATENCY <b>{market?.latencyMs != null ? `${market.latencyMs} MS` : '—'}</b></span></div></article><article className="panel sources"><div className="panel-head"><div><div className="eyebrow">CONNECTION MONITOR</div><h3>Source health</h3></div><span className="muted">REGISTRY / 01</span></div><div className="source-row"><div><strong>CCXT market data</strong><small>Kraken → Coinbase → OKX</small></div><b className={market?.status === 'LIVE' ? 'good' : 'amber'}>{market?.status ?? 'CHECKING'}</b></div><div className="source-row"><div><strong>FinBERT sentiment</strong><small>Inference not installed</small></div><b className="amber">NOT CONFIGURED</b></div><div className="source-row"><div><strong>MT5 bridge</strong><small>Bridge not implemented</small></div><b className="amber">NOT CONFIGURED</b></div>{market !== null && market.errors.length > 0 && <details><summary>Source errors ({market.errors.length})</summary>{market.errors.map(error => <p key={error}>{error}</p>)}</details>}</article></div>
-  <div className="bottom-line"><span>FABLE 5 / INTELLIGENCE TERMINAL</span><span>NOT FINANCIAL ADVICE</span><span>RISK FIRST, EGO LAST.</span></div>{notice.length > 0 && <div className="toast" role="status">{notice}<button onClick={() => setNotice('')}>×</button></div>}</div></main></div>;
+import React, { useCallback, useEffect, useState } from 'react';
+import { BacktestWorkspace, type EaBacktestHint } from '../components/BacktestWorkspace';
+import { CommandPalette, type PaletteCommand } from '../components/CommandPalette';
+import { IntelCopilotWorkspace } from '../components/IntelCopilotWorkspace';
+import { MarketsWorkspace } from '../components/MarketsWorkspace';
+import { Mt5McpNotesWorkspace } from '../components/Mt5McpNotesWorkspace';
+import { OverviewWorkspace, type StatusSummary } from '../components/OverviewWorkspace';
+import { PaperActionWorkspace } from '../components/PaperActionWorkspace';
+import { RiskWorkspace } from '../components/RiskWorkspace';
+import { ScreenerWorkspace } from '../components/ScreenerWorkspace';
+
+type TabId = 'f1' | 'f2' | 'f3' | 'f4' | 'f5' | 'f6' | 'f7' | 'f8';
+
+const WORKSPACES: { id: TabId; fkey: string; label: string }[] = [
+  { id: 'f1', fkey: 'F1', label: 'Overview & Sources' },
+  { id: 'f2', fkey: 'F2', label: 'Markets & Indicators' },
+  { id: 'f3', fkey: 'F3', label: 'Screener & Rules' },
+  { id: 'f4', fkey: 'F4', label: 'Backtest Lab' },
+  { id: 'f5', fkey: 'F5', label: 'Paper & Action Center' },
+  { id: 'f6', fkey: 'F6', label: 'Risk Core & Safety' },
+  { id: 'f7', fkey: 'F7', label: 'FinBERT & Copilot' },
+  { id: 'f8', fkey: 'F8', label: 'MT5 / EA Audit / MCP' },
+];
+
+export default function TerminalPage() {
+  const [activeTab, setActiveTab] = useState<TabId>('f1');
+  const [focusSymbol, setFocusSymbol] = useState<string>('BTC/USDT');
+  const [eaBacktestHint, setEaBacktestHint] = useState<EaBacktestHint | null>(null);
+  const [status, setStatus] = useState<StatusSummary | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; isError: boolean } | null>(null);
+  const [killing, setKilling] = useState(false);
+
+  const notify = useCallback((msg: string, isError = false) => {
+    setToast({ msg, isError });
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/status', { cache: 'no-store' });
+      if (res.ok) {
+        setStatus(await res.json());
+      }
+    } catch {
+      // ignore transient network check
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshStatus();
+  }, [refreshStatus]);
+
+  const triggerKillSwitch = useCallback(async () => {
+    setKilling(true);
+    try {
+      const res = await fetch('/api/kill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'kill', reason: 'Operator Kill Switch hotkey / header bar', squareOffPositions: false }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        notify(`KILL SWITCH ENGAGED: rejected ${data.queuedRejected} queued actions, cancelled ${data.ordersCancelled} resting orders`, true);
+        await refreshStatus();
+      } else {
+        notify(data.error ?? 'Kill switch failed', true);
+      }
+    } finally {
+      setKilling(false);
+    }
+  }, [notify, refreshStatus]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      const inField =
+        target !== null &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      if (inField) return;
+
+      if (e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        void triggerKillSwitch();
+        return;
+      }
+
+      const fMap: Record<string, TabId> = {
+        F1: 'f1',
+        F2: 'f2',
+        F3: 'f3',
+        F4: 'f4',
+        F5: 'f5',
+        F6: 'f6',
+        F7: 'f7',
+        F8: 'f8',
+      };
+      if (fMap[e.key]) {
+        e.preventDefault();
+        setActiveTab(fMap[e.key]);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [triggerKillSwitch]);
+
+  const paletteCommands: PaletteCommand[] = [
+    ...WORKSPACES.map((w) => ({
+      id: `nav-${w.id}`,
+      label: `Open Workspace: ${w.label}`,
+      shortcut: w.fkey,
+      run: () => setActiveTab(w.id),
+    })),
+    ...['BTC/USD', 'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'EUR/USD'].map((sym) => ({
+      id: `sym-${sym}`,
+      label: `Inspect Chart & Indicators: ${sym}`,
+      shortcut: 'F2',
+      run: () => {
+        setFocusSymbol(sym);
+        setActiveTab('f2');
+      },
+    })),
+    {
+      id: 'act-kill',
+      label: 'ENGAGE KILL SWITCH (Stop Entries + Cancel Orders)',
+      shortcut: 'Shift+K',
+      run: () => void triggerKillSwitch(),
+    },
+  ];
+
+  const activeWorkspaceMeta = WORKSPACES.find((w) => w.id === activeTab)!;
+
+  return (
+    <div className="terminal-shell">
+      <header className="topbar">
+        <div className="topbar-main">
+          <div className="brand-row">
+            <div className="mark">
+              F<span>5</span>
+            </div>
+            <div>
+              <div className="brand-title">FABLE 5 TERMINAL</div>
+              <div className="brand-sub">
+                QUANTITATIVE EXECUTION &amp; MQL5 AUDIT WORKBENCH • {activeWorkspaceMeta.fkey} {activeWorkspaceMeta.label.toUpperCase()}
+              </div>
+            </div>
+          </div>
+
+          <div className="session-strip">
+            {(status?.marketSessions ?? []).slice(0, 4).map((s) => (
+              <span key={s.exchange} className="session-pill" title={s.schedule}>
+                <span className={`session-dot ${s.open ? 'open' : 'closed'}`} />
+                {s.exchange} {s.localClock}
+              </span>
+            ))}
+          </div>
+
+          <div className="top-actions">
+            <span className={`badge ${status?.database === 'LIVE' ? 'live' : status?.database === 'LOCAL' ? 'local' : 'offline'}`}>
+              DB: {status?.database ?? 'CHECKING'}
+            </span>
+            {status && status.pendingActions > 0 && (
+              <button className="badge amber" onClick={() => setActiveTab('f5')}>
+                QUEUE: {status.pendingActions}
+              </button>
+            )}
+            <button type="button" className="cmd-btn" onClick={() => setPaletteOpen(true)}>
+              <span>Commands</span>
+              <span className="muted">Ctrl+K</span>
+            </button>
+            <button
+              type="button"
+              className={`kill-btn ${status?.killed ? 'active' : ''}`}
+              disabled={killing}
+              onClick={() => void triggerKillSwitch()}
+            >
+              {status?.killed ? 'KILL ENGAGED' : 'KILL SWITCH'} [Shift+K]
+            </button>
+          </div>
+        </div>
+
+        <nav className="fkey-bar" aria-label="Terminal Workspaces">
+          {WORKSPACES.map((w) => (
+            <button
+              key={w.id}
+              type="button"
+              className={`fkey-tab ${activeTab === w.id ? 'active' : ''}`}
+              onClick={() => setActiveTab(w.id)}
+            >
+              <span className="fkey-code">{w.fkey}</span>
+              <span>{w.label}</span>
+              {w.id === 'f5' && status && status.pendingActions > 0 && (
+                <span className="badge amber" style={{ padding: '1px 5px', fontSize: 9 }}>
+                  {status.pendingActions}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+      </header>
+
+      <main className="workspace-body">
+        {status?.killed && (
+          <div className="banner-kill">
+            <div>
+              <strong>KILL SWITCH ENGAGED:</strong> {status.killReason ?? 'New exposure is blocked. Only position-reducing exits are allowed.'}
+            </div>
+            <button className="btn btn-sm btn-primary" onClick={() => setActiveTab('f6')}>
+              Manage / Resume in F6 Risk Core
+            </button>
+          </div>
+        )}
+
+        {status?.newsShockAlert && (
+          <div className="banner-warn">
+            <strong>FINBERT 3-SIGMA NEWS SHOCK DETECTED:</strong> Abnormal negative news sentiment spike recorded in F7. Review headlines before approving pending Action Center entries.
+          </div>
+        )}
+
+        {activeTab === 'f1' && (
+          <OverviewWorkspace
+            status={status}
+            onNavigate={(id) => setActiveTab(id as TabId)}
+            onRefreshStatus={refreshStatus}
+          />
+        )}
+        {activeTab === 'f2' && <MarketsWorkspace initialSymbol={focusSymbol} onNotify={notify} />}
+        {activeTab === 'f3' && (
+          <ScreenerWorkspace
+            onSelectSymbol={(sym) => {
+              setFocusSymbol(sym);
+              setActiveTab('f2');
+            }}
+          />
+        )}
+        {activeTab === 'f4' && <BacktestWorkspace initialSymbol={focusSymbol} eaHint={eaBacktestHint} onNotify={notify} />}
+        {activeTab === 'f5' && (
+          <PaperActionWorkspace initialSymbol={focusSymbol} onNotify={notify} onStatusChanged={refreshStatus} />
+        )}
+        {activeTab === 'f6' && (
+          <RiskWorkspace killed={status?.killed ?? false} onNotify={notify} onStatusChanged={refreshStatus} />
+        )}
+        {activeTab === 'f7' && (
+          <IntelCopilotWorkspace initialSymbol={focusSymbol} onNotify={notify} onStatusChanged={refreshStatus} />
+        )}
+        {activeTab === 'f8' && (
+          <Mt5McpNotesWorkspace
+            onNotify={notify}
+            onStatusChanged={refreshStatus}
+            onSendToBacktest={(hint) => {
+              setEaBacktestHint(hint);
+              setActiveTab('f4');
+              notify(`Loaded ${hint.eaName} strategy parameters into F4 Backtest Lab`);
+            }}
+          />
+        )}
+      </main>
+
+      <CommandPalette open={paletteOpen} commands={paletteCommands} onClose={() => setPaletteOpen(false)} />
+
+      {toast && (
+        <div className={`toast ${toast.isError ? 'error' : ''}`} role="status">
+          <span>{toast.msg}</span>
+          <button type="button" style={{ background: 'none', border: 0, fontWeight: 700 }} onClick={() => setToast(null)}>
+            ×
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }

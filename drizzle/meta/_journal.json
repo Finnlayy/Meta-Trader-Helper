@@ -8,6 +8,27 @@
       "when": 1793341880778,
       "tag": "0000_medical_butterfly",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794236651905,
+      "tag": "0001_tiny_thunderbolt",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794308670597,
+      "tag": "0002_nappy_the_watchers",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794331817293,
+      "tag": "0003_zippy_giant_man",
+      "breakpoints": true
     }
   ]
 }

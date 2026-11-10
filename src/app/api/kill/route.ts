@@ -1,18 +1,50 @@
-// route.ts — persist an operator kill request and audit atomically. Dependencies: Drizzle.
-import { db } from '../../../lib/db';
-import { auditLog, safetyState } from '../../../lib/schema';
+// route.ts — atomic kill switch engagement and resumption with cascading order/action cancellation. Dependencies: actionCenter, http.
+import { z } from 'zod';
+import { executeKillSwitch, resumeFromKillSwitch } from '../../../lib/actionCenter';
+import { checkSameOrigin, requireDb } from '../../../lib/http';
+
+const killBodySchema = z.object({
+  action: z.enum(['kill', 'resume']).default('kill'),
+  reason: z.string().max(300).optional(),
+  squareOffPositions: z.boolean().optional(),
+});
+
 export async function POST(request: Request) {
-  const origin = request.headers.get('origin');
-  const host = request.headers.get('host');
-  if (origin === null || host === null || new URL(origin).host !== host) return Response.json({ error: 'Same-origin request required.' }, { status: 403 });
-  if (db === null) return Response.json({ error: 'Database not configured; kill state cannot be persisted.' }, { status: 503 });
+  const originErr = checkSameOrigin(request, true);
+  if (originErr) return originErr;
+
+  const { db, errorResponse } = await requireDb();
+  if (!db) return errorResponse!;
+
+  let body: z.infer<typeof killBodySchema> = { action: 'kill' };
   try {
-    await db.transaction(async (tx) => {
-      await tx.insert(safetyState).values({ id: 1, killed: true }).onConflictDoUpdate({ target: safetyState.id, set: { killed: true, updatedAt: new Date() } });
-      await tx.insert(auditLog).values({ actor: 'operator', action: 'kill_switch' });
-    });
-    return Response.json({ killed: true });
+    const raw = await request.text();
+    if (raw.trim()) {
+      const parsed = killBodySchema.safeParse(JSON.parse(raw));
+      if (!parsed.success) {
+        return Response.json({ error: 'Invalid kill switch payload.' }, { status: 400 });
+      }
+      body = parsed.data;
+    }
   } catch {
-    return Response.json({ error: 'Kill state could not be persisted. No execution engine is enabled.' }, { status: 503 });
+    return Response.json({ error: 'Invalid JSON body.' }, { status: 400 });
+  }
+
+  try {
+    if (body.action === 'resume') {
+      await resumeFromKillSwitch(db, body.reason ?? 'Operator verified safety posture and resumed trading');
+      return Response.json({ killed: false, resumed: true });
+    }
+    const report = await executeKillSwitch(db, {
+      reason: body.reason,
+      squareOffPositions: body.squareOffPositions ?? false,
+      actor: 'operator',
+    });
+    return Response.json(report);
+  } catch (err) {
+    return Response.json(
+      { error: err instanceof Error ? err.message : 'Kill switch update failed.' },
+      { status: 400 },
+    );
   }
 }
