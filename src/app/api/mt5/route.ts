@@ -1,4 +1,4 @@
-// route.ts — MT5 MetaAPI profile/sync + MQL5 EA static audit & clean modular generator endpoint. Dependencies: metaapi, eaAudit, schema, http.
+// route.ts — MT5 MetaAPI profile/sync + MQL5 EA static audit/generator + read-only FableBridge.mq5 OHLC endpoint. Dependencies: metaapi, eaAudit, eaLibrary, mt5, schema, http.
 import { randomUUID } from 'node:crypto';
 import { desc } from 'drizzle-orm';
 import { z } from 'zod';
@@ -6,11 +6,29 @@ import { auditMql5Source, generateCleanMql5Ea, type EaCompanionFile } from '../.
 import { getEaLibraryItem } from '../../../lib/eaLibrary';
 import { checkSameOrigin, requireDb } from '../../../lib/http';
 import { getMetaApiConnection, saveMetaApiConnection, syncMetaApiAccount } from '../../../lib/metaapi';
+import { authorized, getSnapshot, mt5Payload, saveSnapshot } from '../../../lib/mt5';
 import { eaAudits } from '../../../lib/schema';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
-export async function GET() {
+function deniedBridge(request: Request) {
+  if (!process.env.MT5_BRIDGE_TOKEN || Buffer.byteLength(process.env.MT5_BRIDGE_TOKEN) < 32) {
+    return Response.json({ error: 'MT5 bridge token is not configured (minimum 32 bytes).' }, { status: 503 });
+  }
+  if (!authorized(request.headers.get('authorization'), process.env.MT5_BRIDGE_TOKEN)) {
+    return Response.json({ error: 'Unauthorized.' }, { status: 401 });
+  }
+  return null;
+}
+
+export async function GET(request: Request) {
+  if (request.headers.has('authorization')) {
+    const error = deniedBridge(request);
+    if (error) return error;
+    return Response.json(getSnapshot(), { headers: { 'Cache-Control': 'no-store' } });
+  }
+
   const { db, errorResponse } = await requireDb();
   if (!db) return errorResponse!;
 
@@ -18,7 +36,12 @@ export async function GET() {
     getMetaApiConnection(db),
     db.select().from(eaAudits).orderBy(desc(eaAudits.createdAt)).limit(20),
   ]);
-  return Response.json({ connection, audits }, { headers: { 'Cache-Control': 'no-store' } });
+  const candleBridge =
+    process.env.MT5_BRIDGE_TOKEN && Buffer.byteLength(process.env.MT5_BRIDGE_TOKEN) >= 32
+      ? getSnapshot().status
+      : 'NOT CONFIGURED';
+
+  return Response.json({ connection, audits, candleBridge }, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 const mt5PostSchema = z.discriminatedUnion('action', [
@@ -62,12 +85,35 @@ const mt5PostSchema = z.discriminatedUnion('action', [
 ]);
 
 export async function POST(request: Request) {
+  if (request.headers.has('authorization')) {
+    const error = deniedBridge(request);
+    if (error) return error;
+    const length = Number(request.headers.get('content-length'));
+    if (length > 128000) return Response.json({ error: 'Payload too large.' }, { status: 413 });
+    try {
+      const text = await request.text();
+      if (Buffer.byteLength(text) > 128000) return Response.json({ error: 'Payload too large.' }, { status: 413 });
+      const result = mt5Payload.safeParse(JSON.parse(text));
+      if (!result.success) return Response.json({ error: 'Invalid MT5 payload.', details: result.error.flatten() }, { status: 400 });
+      const snapshot = saveSnapshot(result.data);
+      return Response.json({ accepted: snapshot.candles.length, receivedAt: snapshot.receivedAt }, { headers: { 'Cache-Control': 'no-store' } });
+    } catch {
+      return Response.json({ error: 'Invalid JSON.' }, { status: 400 });
+    }
+  }
+
   const originErr = checkSameOrigin(request);
   if (originErr) return originErr;
   const { db, errorResponse } = await requireDb();
   if (!db) return errorResponse!;
 
-  const parsed = mt5PostSchema.safeParse(await request.json().catch(() => null));
+  const rawBody = await request.json().catch(() => null);
+  if (rawBody && typeof rawBody === 'object' && !('action' in rawBody) && 'candles' in rawBody) {
+    const error = deniedBridge(request);
+    if (error) return error;
+  }
+
+  const parsed = mt5PostSchema.safeParse(rawBody);
   if (!parsed.success) return Response.json({ error: 'Invalid MT5 / EA request.' }, { status: 400 });
 
   const d = parsed.data;

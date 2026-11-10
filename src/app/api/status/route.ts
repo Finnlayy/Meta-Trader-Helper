@@ -1,9 +1,10 @@
-// route.ts — terminal status, safety state, source registry, market hours, and pending action summary. Dependencies: db, bootstrap, market, metaapi, actionCenter.
+// route.ts — terminal status, safety state, source registry, market hours, and pending action summary. Dependencies: db, bootstrap, market, metaapi, mt5, actionCenter.
 import { desc, eq } from 'drizzle-orm';
 import { getDatabaseHealth, getDb } from '../../../lib/db';
 import { expireStaleActions } from '../../../lib/actionCenter';
 import { getMarketSessions } from '../../../lib/market';
 import { getMetaApiConnection } from '../../../lib/metaapi';
+import { getSnapshot } from '../../../lib/mt5';
 import { pendingActions, safetyState, sentimentEvents, sources } from '../../../lib/schema';
 
 export const dynamic = 'force-dynamic';
@@ -11,9 +12,14 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const health = await getDatabaseHealth();
   const db = await getDb();
+  const mt5 =
+    process.env.MT5_BRIDGE_TOKEN && Buffer.byteLength(process.env.MT5_BRIDGE_TOKEN) >= 32
+      ? getSnapshot().status
+      : 'NOT CONFIGURED';
 
   if (!db) {
     return Response.json({
+      mt5,
       database: health.database,
       storageEngine: health.storageEngine,
       reason: health.reason,
@@ -39,6 +45,7 @@ export async function GET() {
 
     return Response.json(
       {
+        mt5,
         database: health.database,
         storageEngine: health.storageEngine,
         reason: health.reason,
@@ -54,6 +61,7 @@ export async function GET() {
     );
   } catch {
     return Response.json({
+      mt5,
       database: 'OFFLINE',
       storageEngine: health.storageEngine,
       reason: 'Database query failed.',
